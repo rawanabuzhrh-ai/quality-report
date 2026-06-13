@@ -219,37 +219,68 @@
     }while(used.has(p)); used.add(p); return p;
   }
 
-  async function rebuildBundle(data){
-    // preserve existing passwords by agent display name (from MASTER.creds)
+  async function rebuildBundle(newData){
+    // ----- gather existing months (each {monthLabel, monthAr, data}) -----
+    let months = [];
+    if(window.MASTER){
+      if(Array.isArray(window.MASTER.months)){
+        months = window.MASTER.months
+          .filter(m=>m && m.data)
+          .map(m=>({ monthLabel:m.monthLabel, monthAr:m.monthAr, data:m.data }));
+      } else if(window.MASTER.data){
+        const d=window.MASTER.data;
+        months = [{ monthLabel:d.monthLabel||d.month, monthAr:d.monthAr, data:d }];
+      }
+    }
+    // ----- merge the new/edited month: replace if same label, else append -----
+    const newEntry = { monthLabel:newData.monthLabel, monthAr:newData.monthAr, data:newData };
+    const exIdx = months.findIndex(m=>m.monthLabel===newEntry.monthLabel);
+    if(exIdx>=0) months[exIdx] = newEntry; else months.push(newEntry);
+
+    // ----- passwords (preserve by name) -----
     const oldCreds = (window.MASTER && window.MASTER.creds) ? window.MASTER.creds : [];
     const masterEntry = oldCreds.find(c=>c.who==='المدير (كل الموظفين)') || { who:'المدير (كل الموظفين)', ext:'—', pass:'ZNVB-766' };
     const passByName={}; for(const c of oldCreds){ if(c.who!=='المدير (كل الموظفين)') passByName[c.who]=c.pass; }
     const used=new Set(oldCreds.map(c=>c.pass));
 
+    // ----- all agents across all months (by display name) -----
+    const allAgents=[]; const seen=new Set();
+    for(const m of months){ for(const a of m.data.agents){ if(!seen.has(a.display)){ seen.add(a.display); allAgents.push({display:a.display, ext:a.ext||''}); } } }
+
     const newCreds=[masterEntry];
-    for(const a of data.agents){
-      let pass=passByName[a.display];
-      if(!pass){ pass=genPass(used); }
-      newCreds.push({ who:a.display, ext:a.ext||'—', pass });
+    for(const an of allAgents){
+      let pass=passByName[an.display]; if(!pass) pass=genPass(used);
+      newCreds.push({ who:an.display, ext:an.ext||'—', pass });
+    }
+    const credMap={}; for(const c of newCreds) credMap[c.who]=c.pass;
+
+    function teamOf(data){
+      const N=data.agents.length;
+      return { agentCount:N, totals:data.totals, errorTypes:data.errorTypes,
+        avgErr:N?data.agents.reduce((s,a)=>s+a.totalErrors,0)/N:0,
+        avgEuc:N?data.agents.reduce((s,a)=>s+a.counts.EUC,0)/N:0,
+        avgPass:N?data.agents.reduce((s,a)=>s+a.pass,0)/N:0 };
     }
 
-    const N=data.agents.length;
-    const teamStats={
-      agentCount:N, totals:data.totals, errorTypes:data.errorTypes,
-      avgErr:N?data.agents.reduce((s,a)=>s+a.totalErrors,0)/N:0,
-      avgEuc:N?data.agents.reduce((s,a)=>s+a.counts.EUC,0)/N:0,
-      avgPass:N?data.agents.reduce((s,a)=>s+a.pass,0)/N:0,
-    };
     const salt=crypto.getRandomValues(new Uint8Array(16));
     const blobs=[];
-    const mBlob=await encBlob(masterEntry.pass,{role:'manager',data,creds:newCreds},salt); mBlob.role='manager'; blobs.push(mBlob);
-    const credMap={}; for(const c of newCreds) credMap[c.who]=c.pass;
-    for(const a of data.agents){
-      const payload={role:'agent',project:data.project,month:data.monthLabel,monthAr:data.monthAr,monthLabel:data.monthLabel,agent:a,team:teamStats};
-      const blob=await encBlob(credMap[a.display],payload,salt); blob.role='agent'; blobs.push(blob);
+    // manager blob: ALL months + creds
+    const mgrMonths = months.map(m=>({ monthLabel:m.monthLabel, monthAr:m.monthAr, data:m.data }));
+    const mBlob=await encBlob(masterEntry.pass,{ role:'manager', months:mgrMonths, creds:newCreds }, salt); mBlob.role='manager'; blobs.push(mBlob);
+    // each agent blob: only the months where they appear
+    for(const an of allAgents){
+      const agentMonths=[];
+      for(const m of months){
+        const a=m.data.agents.find(x=>x.display===an.display);
+        if(a) agentMonths.push({ monthLabel:m.monthLabel, monthAr:m.monthAr, agent:a, team:teamOf(m.data) });
+      }
+      const payload={ role:'agent', project:newData.project, months:agentMonths };
+      const blob=await encBlob(credMap[an.display], payload, salt); blob.role='agent'; blobs.push(blob);
     }
-    const bundle={salt:_b64(salt),iter:150000,project:data.project,monthAr:data.monthAr,monthLabel:data.monthLabel,month:data.monthLabel,blobs};
-    return { bundle, creds:newCreds };
+    const bundle={ salt:_b64(salt), iter:150000, project:newData.project,
+      monthAr:newData.monthAr, monthLabel:newData.monthLabel, month:newData.monthLabel,
+      monthsList: months.map(m=>m.monthLabel), blobs };
+    return { bundle, creds:newCreds, data:newData, months:mgrMonths };
   }
 
   /* ---------- download the data file (data.json) ---------- */
@@ -277,10 +308,10 @@
         </div>
         <div class="modal-body" id="updBody">
           <ol class="upd-steps">
-            <li>اكتب اسم الشهر الجديد.</li>
+            <li>اكتب اسم الشهر الجديد (مثلاً «يونيو 2026»).</li>
             <li>ارفع ملفات الإكسل (PASS و BC و NC و EUC) — يكفي ما عندك منها.</li>
-            <li>اضغط «إعادة بناء التقرير» ثم نزّل ملف <b>data.json</b>.</li>
-            <li>ارفعه إلى GitHub (استبدل ملف <b>data.json</b> القديم) — وسيتحدّث التقرير تلقائياً عند الجميع.</li>
+            <li>اضغط «إعادة بناء التقرير» — الشهر الجديد <b>يُضاف</b> للشهور السابقة (لا تُحذف).</li>
+            <li>نزّل ملف <b>data.json</b> وارفعه إلى GitHub (استبدل القديم) — يتحدّث عند الجميع تلقائياً.</li>
           </ol>
           <div class="upd-field">
             <label>اسم الشهر (يظهر في التقرير)</label>
@@ -403,7 +434,9 @@
       if(!data.agents.length) throw new Error('لم يتم العثور على أي موظف في الملفات المرفوعة');
       const result=await rebuildBundle(data);
       lastResult={ bundle:result.bundle, creds:result.creds, data };
-      showSummary(data, result.creds, parsed);
+      showSummary(data, result.creds, parsed, result.months);
+      // apply the new month live so the manager can browse it immediately
+      try{ if(typeof window.__applyNewMonths==='function') window.__applyNewMonths(result.months); }catch(_){}
       status('تم بنجاح ✓ — نزّل ملف data.json وارفعه إلى GitHub.', 'ok');
       document.getElementById('updDownload').style.display='inline-flex';
     }catch(err){
@@ -412,21 +445,23 @@
     btn.disabled=chosenFiles.length===0;
   }
 
-  function showSummary(data, creds, parsed){
+  function showSummary(data, creds, parsed, months){
     const detected = parsed.map(p=>p.role.type==='PASS'?'الناجحة':p.role.type).join('، ');
     const newOnes = creds.filter(c=>c.who!=='المدير (كل الموظفين)').filter(c=>{
       const old=(window.MASTER&&window.MASTER.creds)||[];
       return !old.some(o=>o.who===c.who);
     });
+    const monthsList = (months||[]).map(m=>m.monthLabel).filter(Boolean);
     let html=`<div class="upd-summary">
-      <div class="upd-sum-row"><span>الشهر</span><b>${data.monthLabel}</b></div>
+      <div class="upd-sum-row"><span>الشهر المُضاف</span><b>${data.monthLabel}</b></div>
       <div class="upd-sum-row"><span>الملفات المقروءة</span><b>${detected||'—'}</b></div>
       <div class="upd-sum-row"><span>عدد الموظفين</span><b>${data.agents.length}</b></div>
       <div class="upd-sum-row"><span>مكالمات ناجحة</span><b>${data.totals.pass}</b></div>
       <div class="upd-sum-row"><span>إجمالي الأخطاء</span><b>${data.totals.EUC+data.totals.BC+data.totals.NC}</b> <span class="upd-sub">(حرج على العميل ${data.totals.EUC}، حرج على العمل ${data.totals.BC}، غير حرج ${data.totals.NC})</span></div>
+      ${monthsList.length>1?`<div class="upd-sum-row"><span>كل الشهور بالملف</span><b>${monthsList.length}</b> <span class="upd-sub">(${monthsList.join('، ')})</span></div>`:''}
       ${newOnes.length?`<div class="upd-sum-row"><span>موظفون جدد</span><b>${newOnes.length}</b> <span class="upd-sub">(أُنشئت لهم كلمات مرور جديدة)</span></div>`:''}
     </div>
-    <p class="upd-note">كلمات المرور للموظفين القدامى بقيت كما هي. لمراجعة القائمة كاملة بعد التنزيل استخدم زر «كلمات المرور».</p>`;
+    <p class="upd-note">الشهور السابقة محفوظة — هذا الشهر يُضاف إليها. كلمات المرور للموظفين القدامى بقيت كما هي. لمراجعة القائمة كاملة استخدم زر «كلمات المرور».</p>`;
     document.getElementById('updSummary').innerHTML=html;
   }
 

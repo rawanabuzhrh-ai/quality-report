@@ -175,14 +175,24 @@ function errorsHTML(a){
     const link = e.link || lget(lsKey('lnk',ak,e));
     const note = e.note || lget(lsKey('note',ak,e));
     const comment = lget(lsKey('cmt',ak,e));
+    const heard = lget(lsKey('heard',ak,e))==='1';
+    const audio = e.audio || '';
 
-    let linkBlock, noteBlock, commentBlock = '';
+    let linkBlock, noteBlock, commentBlock = '', audioBlock = '';
     if(MODE==="manager"){
       linkBlock = `<div class="efield">
         <label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"></path><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"></path></svg> رابط تسجيل المكالمة</label>
         <div class="input-row">
           <input type="url" dir="ltr" placeholder="https://…" value="${escapeHtml(link)}" data-eid="${eidAttr}" data-field="lnk" />
           <button class="save-btn" data-save="lnk" data-eid="${eidAttr}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8M7 3v5h8"></path></svg> حفظ</button>
+        </div>
+      </div>`;
+      audioBlock = `<div class="efield">
+        <label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8"></path></svg> أو ارفع تسجيل المكالمة صوتياً (اختياري)</label>
+        <div class="audio-ctl" data-audwrap="${eidAttr}">
+          ${audio
+            ? `<audio controls src="${audio}" class="aud"></audio><button class="rm-aud" data-rmaud="${eidAttr}" title="حذف التسجيل"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"></path></svg> حذف</button>`
+            : `<label class="upload-aud"><input type="file" accept="audio/*" data-aud="${eidAttr}" hidden /><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5"></path><path d="M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"></path></svg> رفع ملف صوتي</label>`}
         </div>
       </div>`;
       noteBlock = `<div class="efield">
@@ -196,9 +206,15 @@ function errorsHTML(a){
       }
     } else {
       // AGENT view
-      linkBlock = isValidUrl(link)
+      const listenBtn = isValidUrl(link)
         ? `<a class="listen-btn" href="${escapeHtml(link)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg> استماع للمكالمة</a>`
-        : `<span class="no-link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg> لم يُضَف رابط التسجيل بعد</span>`;
+        : (audio ? '' : `<span class="no-link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg> لم يُضَف رابط التسجيل بعد</span>`);
+      const heardBlock = `<label class="heard-toggle ${heard?'on':''}" data-eid="${eidAttr}">
+        <span class="hbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"></path></svg></span>
+        <span class="htxt">سمعت المكالمة</span>
+      </label>`;
+      linkBlock = `<div class="listen-row">${listenBtn}${heardBlock}</div>`;
+      audioBlock = audio ? `<audio controls src="${audio}" class="aud aud-agent"></audio>` : '';
       noteBlock = note ? `<div class="mgr-note"><span class="nh">ملاحظة المدير</span>${escapeHtml(note)}</div>` : '';
       commentBlock = `<div class="efield">
         <label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> تعليقك على هذه المكالمة</label>
@@ -211,11 +227,13 @@ function errorsHTML(a){
       <div class="ecard-top">
         <span class="badge ${e.type}">${SEV[e.type].ar}</span>
         <span class="ecard-date"><b>${e.day}</b> ${MONTH_AR}</span>
+        ${heard?`<span class="heard-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12"><path d="M20 6 9 17l-5-5"></path></svg> تم الاستماع</span>`:""}
         <span class="ecard-code ${codeBad?'bad':''}"><span class="code mono">${codeDisp}</span>${copyBtn}</span>
       </div>
       <div class="ecard-body">
         <div class="ecard-attr">${e.attribute}</div>
         ${linkBlock}
+        ${audioBlock}
         ${noteBlock}
         ${commentBlock}
       </div>
@@ -355,6 +373,62 @@ function wireCardActions(a){
   const cpBtn = document.getElementById("sendCmtCopy");
   if(waBtn) waBtn.addEventListener("click",()=>sendComments(a,"wa"));
   if(cpBtn) cpBtn.addEventListener("click",()=>sendComments(a,"copy"));
+
+  // listened-to-call toggles (agent)
+  el.querySelectorAll(".heard-toggle").forEach(t=>{
+    t.addEventListener("click",(ev)=>{
+      ev.preventDefault();
+      const eid = t.dataset.eid;
+      const e = findErr(a, eid);
+      const k = lsKey('heard', agentKey(a), e);
+      const now = lget(k)==='1';
+      lset(k, now ? '' : '1');
+      t.classList.toggle("on", !now);
+      // reflect badge in card top
+      const card = t.closest(".ecard");
+      const top = card && card.querySelector(".ecard-top");
+      if(top){
+        let badge = top.querySelector(".heard-badge");
+        if(!now){
+          if(!badge){
+            badge = document.createElement("span");
+            badge.className = "heard-badge";
+            badge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12"><path d="M20 6 9 17l-5-5"></path></svg> تم الاستماع';
+            top.insertBefore(badge, top.querySelector(".ecard-code"));
+          }
+        } else if(badge){ badge.remove(); }
+      }
+    });
+  });
+
+  // audio upload (manager)
+  el.querySelectorAll('input[data-aud]').forEach(inp=>{
+    inp.addEventListener("change",()=>{
+      const file = inp.files && inp.files[0];
+      if(!file) return;
+      if(!/^audio\//.test(file.type)){ toast("الرجاء اختيار ملف صوتي"); return; }
+      if(file.size > 12*1024*1024){ toast("حجم الملف كبير — الحد ١٢ ميجابايت"); inp.value=""; return; }
+      const eid = inp.dataset.aud;
+      const e = findErr(a, eid);
+      const wrap = inp.closest('.audio-ctl');
+      if(wrap) wrap.innerHTML = '<span class="aud-loading">جارٍ التحميل…</span>';
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        if(e) e.audio = reader.result;
+        markDirty();
+        renderDetail();
+      };
+      reader.onerror = ()=>{ toast("تعذّر قراءة الملف"); renderDetail(); };
+      reader.readAsDataURL(file);
+    });
+  });
+  // audio remove (manager)
+  el.querySelectorAll('[data-rmaud]').forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const e = findErr(a, btn.dataset.rmaud);
+      if(e){ delete e.audio; markDirty(); renderDetail(); }
+    });
+  });
 }
 
 function markDirty(){
@@ -383,15 +457,22 @@ function sendComments(a, how){
   const ak = agentKey(a);
   const lines = [];
   const ordered = [...a.errors].sort((x,y)=> SEV[y.type].rank-SEV[x.type].rank || (+x.day)-(+y.day));
+  let heardCount = 0;
   for(const e of ordered){
+    const heard = lget(lsKey('heard',ak,e))==='1';
+    if(heard) heardCount++;
     const c = lget(lsKey('cmt',ak,e));
-    if(c){ lines.push(`• [${SEV[e.type].ar}] ${e.day} ${MONTH_AR} — كود: ${e.codeBad?'(غير مكتمل)':e.code}`); lines.push(`  تعليق: ${c}`); }
+    if(c || heard){
+      lines.push(`• [${SEV[e.type].ar}] ${e.day} ${MONTH_AR} — كود: ${e.codeBad?'(غير مكتمل)':e.code}${heard?' ✅ سمعتها':''}`);
+      if(c) lines.push(`  تعليق: ${c}`);
+    }
   }
-  if(!lines.length){ toast("لا توجد تعليقات محفوظة للإرسال"); return; }
-  const header = `تعليقات ${a.display} على تقرير جودة ${BUNDLE.monthLabel||''} — مشروع ${BUNDLE.project||'DAW'}:`;
-  const msg = header + "\n\n" + lines.join("\n");
+  if(!lines.length){ toast("لا توجد تعليقات أو مكالمات مسموعة للإرسال"); return; }
+  const header = `${a.display} — متابعة تقرير جودة ${DATA.monthLabel||MONTH_AR} (مشروع ${(BUNDLE&&BUNDLE.project)||'DAW'})`;
+  const summary = `سمعت ${heardCount} من ${a.totalErrors} مكالمة.`;
+  const msg = header + "\n" + summary + "\n\n" + lines.join("\n");
   if(how==="wa") window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
-  else copy(msg, "تم نسخ تعليقاتك — أرسلها للمدير");
+  else copy(msg, "تم نسخ المتابعة — أرسلها للمدير");
 }
 
 /* ===== team error-type chart ===== */
@@ -535,13 +616,77 @@ document.getElementById("mailMsg").addEventListener("click",()=>{
 });
 document.getElementById("lockBtn").addEventListener("click", lock);
 
+/* ===== months infrastructure ===== */
+let PAYLOAD = null, ALL_MONTHS = [], CUR_MONTH = 0;
+
+/* Normalize any login payload (legacy single-month OR new multi-month) into {role, months:[...], creds?} */
+function normalizeMonths(payload){
+  if(Array.isArray(payload.months) && payload.months.length){ return payload; }
+  if(payload.role==="manager"){
+    const d = payload.data || {};
+    return { role:"manager", creds:payload.creds, months:[{
+      monthLabel: d.monthLabel || d.month || "", monthAr: d.monthAr || "", data: d
+    }] };
+  }
+  return { role:"agent", project:payload.project, months:[{
+    monthLabel: payload.monthLabel || payload.month || "", monthAr: payload.monthAr || "",
+    agent: payload.agent, team: payload.team
+  }] };
+}
+
+function buildMonthSelector(){
+  const host = document.getElementById("monthSelectWrap");
+  if(!host) return;
+  if(ALL_MONTHS.length <= 1){ host.style.display = "none"; return; }
+  host.style.display = "inline-flex";
+  // latest first in the dropdown, value = real index
+  const opts = ALL_MONTHS.map((m,i)=>({i, label:m.monthLabel||("شهر "+(i+1))}))
+    .slice().reverse()
+    .map(o=>`<option value="${o.i}">${o.label}</option>`).join("");
+  host.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+    <select id="monthSelect" aria-label="اختر الشهر">${opts}</select>`;
+  document.getElementById("monthSelect").addEventListener("change", e=>{
+    applyMonth(parseInt(e.target.value,10));
+  });
+}
+
 /* ===== boot after successful login ===== */
 function boot(payload){
-  if(payload.role==="manager"){
-    MODE = "manager";
-    DATA = payload.data;
-    MASTER = payload;
-    window.MASTER = payload;
+  PAYLOAD = normalizeMonths(payload);
+  MODE = PAYLOAD.role==="manager" ? "manager" : "agent";
+  if(MODE==="manager"){ MASTER = payload; window.MASTER = payload; window.MASTER.months = PAYLOAD.months; }
+  ALL_MONTHS = PAYLOAD.months.slice();
+  CUR_MONTH = ALL_MONTHS.length - 1; // default to latest month
+
+  // chrome adjustments (once)
+  document.body.classList.add(MODE==="agent" ? "mode-agent" : "mode-manager");
+  if(MODE==="agent"){
+    document.querySelector("aside").style.display = "none";
+    document.querySelector(".grid").style.gridTemplateColumns = "1fr";
+  }
+  const lbl = document.getElementById("sessionLabel");
+  const agentName = MODE==="agent" ? (ALL_MONTHS[CUR_MONTH].agent.display) : "";
+  if(lbl) lbl.textContent = (MODE==="manager") ? "وضع المدير — جميع الموظفين" : ("جلسة: " + agentName);
+  document.getElementById("lockBtn").style.display = "inline-flex";
+  if(MODE==="manager"){
+    document.getElementById("updateBtn").style.display = "inline-flex";
+    document.getElementById("credsBtn").style.display = "inline-flex";
+  }
+  buildMonthSelector();
+
+  document.getElementById("appWrap").style.display = "";
+  document.querySelector("header.topbar").style.display = "";
+
+  applyMonth(CUR_MONTH);
+}
+
+/* ===== switch to a given month index ===== */
+function applyMonth(idx){
+  CUR_MONTH = idx;
+  const m = ALL_MONTHS[idx];
+  if(MODE==="manager"){
+    DATA = m.data;
     // hydrate unpublished local drafts (recording links / manager notes) so edits survive reloads
     try{
       for(const ag of DATA.agents){
@@ -554,48 +699,38 @@ function boot(payload){
         }
       }
     }catch(_){}
+    N = DATA.agents.length;
+    TEAM = { avgErr: DATA.agents.reduce((s,a)=>s+a.totalErrors,0)/(DATA.agents.length||1),
+             avgEuc: DATA.agents.reduce((s,a)=>s+a.counts.EUC,0)/(DATA.agents.length||1) };
+    // keep selection if that agent exists this month, else overview
+    if(state.selected && !findAgent(state.selected)) state.selected = null;
   } else {
-    MODE = "agent";
     DATA = {
-      project: payload.project, month: payload.month,
-      totals: payload.team.totals,
-      errorTypes: payload.team.errorTypes,
-      agents: [payload.agent],
+      project: PAYLOAD.project, month: m.monthLabel, monthLabel: m.monthLabel, monthAr: m.monthAr,
+      totals: m.team.totals, errorTypes: m.team.errorTypes, agents: [m.agent],
     };
+    N = m.team.agentCount;
+    TEAM = { avgErr: m.team.avgErr, avgEuc: m.team.avgEuc };
+    state.selected = agentKey(m.agent);
   }
-  N = (MODE==="manager") ? DATA.agents.length : payload.team.agentCount;
-  MONTH_AR = DATA.monthAr || payload.monthAr || MONTH_AR_DEFAULT;
-  const monthLabel = DATA.monthLabel || payload.monthLabel || (MONTH_AR+" 2026");
-  // update month-bearing chrome
+  MONTH_AR = m.monthAr || MONTH_AR_DEFAULT;
+  const monthLabel = m.monthLabel || MONTH_AR;
   const mm = document.getElementById("metaMonth"); if(mm) mm.textContent = monthLabel;
-  TEAM = (MODE==="manager")
-    ? { avgErr: DATA.agents.reduce((s,a)=>s+a.totalErrors,0)/DATA.agents.length,
-        avgEuc: DATA.agents.reduce((s,a)=>s+a.counts.EUC,0)/DATA.agents.length }
-    : { avgErr: payload.team.avgErr, avgEuc: payload.team.avgEuc };
-
-  // chrome adjustments
-  document.body.classList.add(MODE==="agent" ? "mode-agent" : "mode-manager");
-  if(MODE==="agent"){
-    document.querySelector("aside").style.display = "none";
-    document.querySelector(".grid").style.gridTemplateColumns = "1fr";
-    state.selected = agentKey(payload.agent);
-  }
-  // session label + lock button
-  const lbl = document.getElementById("sessionLabel");
-  if(lbl) lbl.textContent = (MODE==="manager") ? "وضع المدير — جميع الموظفين" : ("جلسة: " + payload.agent.display);
-  document.getElementById("lockBtn").style.display = "inline-flex";
-  if(MODE==="manager"){
-    document.getElementById("updateBtn").style.display = "inline-flex";
-    document.getElementById("credsBtn").style.display = "inline-flex";
-  }
-
-  document.getElementById("appWrap").style.display = "";
-  document.querySelector("header.topbar").style.display = "";
+  const sel = document.getElementById("monthSelect"); if(sel) sel.value = String(idx);
 
   renderKPIs(); renderList(); renderDetail();
 }
 
-/* ===== crypto login ===== */
+/* called by the updater after a successful rebuild — refresh in-memory months live */
+window.__applyNewMonths = function(months){
+  if(!months || !months.length || !window.MASTER) return;
+  window.MASTER.months = months.map(m=>({ monthLabel:m.monthLabel, monthAr:m.monthAr, data:m.data }));
+  PAYLOAD.months = window.MASTER.months;
+  ALL_MONTHS = PAYLOAD.months.slice();
+  buildMonthSelector();
+  CUR_MONTH = ALL_MONTHS.length - 1;
+  applyMonth(CUR_MONTH);
+};
 const _enc = new TextEncoder(), _dec = new TextDecoder();
 function _fromB64(s){ const bin=atob(s); const b=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) b[i]=bin.charCodeAt(i); return b; }
 async function _deriveKey(pass){
