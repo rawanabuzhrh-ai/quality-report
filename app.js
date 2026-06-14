@@ -325,6 +325,7 @@ function renderDetail(){
   const sb = document.getElementById("sendBtn");
   if(sb) sb.addEventListener("click",()=>openModal(a));
   wireCardActions(a);
+  refreshSync();
 }
 
 /* ===== card save / publish / send wiring ===== */
@@ -348,13 +349,16 @@ function wireCardActions(a){
         if(val && !isValidUrl(val)){ toast("الرابط غير صالح — لازم يبدأ بـ https://"); return; }
         if(e) e.link = val;
         lset(lsKey('lnk',ak,e||{}), val);
+        if(window.QASync && e) window.QASync.write(ak, errId(e), "link", val);
         markDirty();
       } else if(kind==="note"){
         if(e) e.note = val;
         lset(lsKey('note',ak,e||{}), val);
+        if(window.QASync && e) window.QASync.write(ak, errId(e), "note", val);
         markDirty();
       } else if(kind==="cmt"){
         lset(lsKey('cmt',ak,e||{}), val);
+        if(window.QASync && e) window.QASync.write(ak, errId(e), "comment", val);
       }
       btn.classList.add("saved");
       const orig = btn.innerHTML;
@@ -383,6 +387,7 @@ function wireCardActions(a){
       const k = lsKey('heard', agentKey(a), e);
       const now = lget(k)==='1';
       lset(k, now ? '' : '1');
+      if(window.QASync && e) window.QASync.write(ak, errId(e), "heard", now ? false : true);
       t.classList.toggle("on", !now);
       // reflect badge in card top
       const card = t.closest(".ecard");
@@ -718,7 +723,43 @@ function applyMonth(idx){
   const mm = document.getElementById("metaMonth"); if(mm) mm.textContent = monthLabel;
   const sel = document.getElementById("monthSelect"); if(sel) sel.value = String(idx);
 
+  if(window.QASync){ window.QASync.setContext((BUNDLE&&BUNDLE.project)||"DAW", monthLabel); }
+
   renderKPIs(); renderList(); renderDetail();
+}
+
+/* ===== live sync: subscribe to the currently shown agent ===== */
+let __syncedAgent = null;
+function refreshSync(){
+  if(!window.QASync) return;
+  const a = state.selected ? findAgent(state.selected) : null;
+  if(!a){ __syncedAgent = null; window.QASync.unsubscribe(); return; }
+  const ak = agentKey(a);
+  const ctxKey = ak + "@@" + (DATA.monthLabel||MONTH_AR);
+  if(__syncedAgent === ctxKey) return;   // already listening to this agent/month
+  __syncedAgent = ctxKey;
+  window.QASync.subscribe(ak, (map)=>applyRemote(a, map));
+}
+
+/* merge a remote snapshot into local state, then re-render if safe */
+function applyRemote(a, map){
+  if(!a || !map) return;
+  const ak = agentKey(a);
+  let changed = false;
+  for(const e of a.errors){
+    const r = map[window.QASync.keyOf(errId(e))];
+    if(!r) continue;
+    if("link" in r && (e.link||"")!==(r.link||"")){ e.link = r.link||""; lset(lsKey('lnk',ak,e), e.link); changed = true; }
+    if("note" in r && (e.note||"")!==(r.note||"")){ e.note = r.note||""; lset(lsKey('note',ak,e), e.note); changed = true; }
+    if("comment" in r){ const cur=lget(lsKey('cmt',ak,e)); if(cur!==(r.comment||"")){ lset(lsKey('cmt',ak,e), r.comment||""); changed = true; } }
+    if("heard" in r){ const cur=lget(lsKey('heard',ak,e)); const nv=r.heard?'1':''; if(cur!==nv){ lset(lsKey('heard',ak,e), nv); changed = true; } }
+  }
+  if(!changed) return;
+  // don't disrupt active typing
+  const ae = document.activeElement;
+  const typing = ae && (ae.tagName==="TEXTAREA" || ae.tagName==="INPUT") && document.getElementById("detail").contains(ae);
+  if(typing) return;
+  renderDetail();
 }
 
 /* called by the updater after a successful rebuild — refresh in-memory months live */
@@ -793,10 +834,23 @@ function initLogin(){
   });
 
   input.focus();
-  // reflect bundle month on the login screen
+  // reflect bundle month + data source on the login screen
   try{
     const ls = document.getElementById("loginSub");
     if(ls && BUNDLE && BUNDLE.monthLabel) ls.textContent = BUNDLE.monthLabel + " · مشروع " + (BUNDLE.project||"DAW");
+    const src = window.__DATA_SOURCE || {};
+    const badge = document.getElementById("dataSrc");
+    if(badge){
+      if(src.source==="server"){
+        badge.className = "data-src ok";
+        badge.innerHTML = '<span class="ds-dot"></span> البيانات محدّثة من الخادم' + (src.month?(' — '+src.month):'');
+        badge.style.display = "inline-flex";
+      } else if(src.source==="embedded"){
+        badge.className = "data-src warn";
+        badge.innerHTML = '<span class="ds-dot"></span> نسخة محفوظة على الجهاز' + (src.month?(' — '+src.month):'') + ' (تعذّر تحميل آخر تحديث)';
+        badge.style.display = "inline-flex";
+      }
+    }
   }catch(e){}
 }
 
